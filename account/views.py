@@ -25,7 +25,7 @@ class OTPLoginView(APIView):
             otp_key = user.otp_key
             otp = pyotp.TOTP(otp_key, interval=300).now()
             print(otp) 
-            response = self.send_otp(email, otp) 
+            # response = self.send_otp(email, otp) 
         return Response(data={"message": "OTP sent"})
 
     def send_otp(self, email, otp):
@@ -44,14 +44,25 @@ class OTPLoginView(APIView):
         email = data.get("email")
         action = request.query_params.get("action")
         if action == "requestOTP":
+            request.session["load_count"] = 0
             return self.get_otp(request)
         # Get User instance
         user = User.objects.filter(email=email).last()
         if user:
             otp = data.get("otp")
+            if "load_count" in request.session:
+                count = request.session["load_count"] + 1
+            else:
+                count = 1
+            request.session["load_count"] = count
+            if count > 3:
+                return Response(data={"message":"Max Attempts exceeded"},status=404)
             if pyotp.TOTP(user.otp_key, interval=300).verify(otp):
                 # Generate a token and send it in response
                 token = RefreshToken.for_user(user)
+                print(type(token.payload))
+                print(token.payload)
+                token.payload['name'] = user.name
                 return Response(data={
                     "access": str(token.access_token),
                     "refresh": str(token)
